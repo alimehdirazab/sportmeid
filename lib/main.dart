@@ -435,9 +435,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
               allowUniversalAccessFromFileURLs: true,
               allowFileAccessFromFileURLs: true,
               supportMultipleWindows: true,
-            
+              cacheEnabled: false, // <--- This disables caching
+              cacheMode: CacheMode.LOAD_DEFAULT,
+              clearSessionCache: false,
             ),
-            
+
             onWebViewCreated: (controller) {
               webViewController = controller;
 
