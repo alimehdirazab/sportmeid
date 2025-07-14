@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:permission_handler/permission_handler.dart';
+//import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const WebViewScreen()),
+        MaterialPageRoute(builder: (context) => const WelcomeView()),
       );
     }
   }
@@ -122,7 +122,7 @@ class WelcomeView extends StatelessWidget {
                 Text(
                   'SPORT ME ID',
                   style: TextStyle(
-                    fontSize: 60,
+                    fontSize: 66,
                     fontWeight: FontWeight.w500,
                     fontFamily: 'Blockletter',
                     color: Colors.white,
@@ -159,7 +159,7 @@ class WelcomeView extends StatelessWidget {
                     ),
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (context) => const WebViewScreen(),
@@ -337,6 +337,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   Future<void> _saveFile(Uint8List bytes, String filename) async {
     try {
+      // Ensure filename is valid and unique
+      String safeFilename = filename;
+      if (safeFilename.isEmpty || safeFilename.toLowerCase() == 'unknown') {
+        // Use a timestamp for uniqueness
+        safeFilename = 'qr_code_${DateTime.now().millisecondsSinceEpoch}.png';
+      } else if (!safeFilename.toLowerCase().endsWith('.png')) {
+        safeFilename = '$safeFilename.png';
+      }
+
       Directory? directory;
       if (Platform.isAndroid) {
         directory = Directory('/storage/emulated/0/Download');
@@ -344,14 +353,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
           directory = await getExternalStorageDirectory();
         }
       } else {
-        directory = await getApplicationDocumentsDirectory();
+        // iOS: Save to Documents/athlete/ and make it visible in Files app if Info.plist is set
+        final docsDir = await getApplicationDocumentsDirectory();
+        directory = Directory('${docsDir.path}/athlete');
+        if (!await directory.exists()) {
+          await directory.create(recursive: true);
+        }
       }
 
-      final file = File('${directory!.path}/$filename');
+      final file = File('${directory!.path}/$safeFilename');
       await file.writeAsBytes(bytes);
 
+      print('Saved file path: ${file.path}');
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloaded: $filename to ${directory.path}')),
+        SnackBar(content: Text('Downloaded: $safeFilename to ${directory.path}')),
       );
     } catch (e) {
       ScaffoldMessenger.of(
@@ -414,22 +430,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(
+      value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        body: SafeArea(
-          child: InAppWebView(
+        body:InAppWebView(
             initialUrlRequest: URLRequest(
               url: WebUri('https://sportmeid.mmcgbl.dev/auth/login'),
             ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
-              mediaPlaybackRequiresUserGesture: false,
+              //mediaPlaybackRequiresUserGesture: false,
               allowsInlineMediaPlayback: true,
               useOnDownloadStart: true,
-              useShouldOverrideUrlLoading: true,
+             // useShouldOverrideUrlLoading: true,
               allowFileAccess: true,
               allowContentAccess: true,
               allowUniversalAccessFromFileURLs: true,
@@ -597,7 +612,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             //   print('HTTP error: $statusCode, $description');
             // },
           ),
-        ),
+        
       ),
     );
   }
