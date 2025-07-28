@@ -1,11 +1,9 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-//import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -63,11 +61,18 @@ class _SplashScreenState extends State<SplashScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        child: const Center(
+        child:  Center(
           child: Image(
             image: AssetImage('assets/images/appIcon.png'),
             width: 150,
             height: 150,
+            errorBuilder: (context, error, stackTrace) {
+              return Icon(
+                Icons.sports,
+                size: 150,
+                color: Colors.white,
+              );
+            },
           ),
         ),
       ),
@@ -364,11 +369,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
       final file = File('${directory!.path}/$safeFilename');
       await file.writeAsBytes(bytes);
 
-      print('Saved file path: ${file.path}');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Downloaded: $safeFilename to ${directory.path}')),
-      );
+      // File saved successfully
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Downloaded: $safeFilename to ${directory.path}')),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
