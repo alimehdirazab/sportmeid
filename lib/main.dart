@@ -61,17 +61,13 @@ class _SplashScreenState extends State<SplashScreen> {
             fit: BoxFit.cover,
           ),
         ),
-        child:  Center(
+        child: Center(
           child: Image(
             image: AssetImage('assets/images/appIcon.png'),
             width: 150,
             height: 150,
             errorBuilder: (context, error, stackTrace) {
-              return Icon(
-                Icons.sports,
-                size: 150,
-                color: Colors.white,
-              );
+              return Icon(Icons.sports, size: 150, color: Colors.white);
             },
           ),
         ),
@@ -210,22 +206,13 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen> {
   InAppWebViewController? webViewController;
-  bool isLoading = false;
+  bool isLoading = true; // Start with loading state
+  String? errorMessage;
 
   @override
   void initState() {
     super.initState();
-    // _requestPermissions();
   }
-
-  // Future<void> _requestPermissions() async {
-  //   await [
-  //     Permission.camera,
-  //     Permission.microphone,
-  //     Permission.storage,
-  //     Permission.manageExternalStorage,
-  //   ].request();
-  // }
 
   Future<void> _downloadFile(String url, String filename) async {
     try {
@@ -372,7 +359,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // File saved successfully
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded: $safeFilename to ${directory.path}')),
+          SnackBar(
+            content: Text('Downloaded: $safeFilename to ${directory.path}'),
+          ),
         );
       }
     } catch (e) {
@@ -441,184 +430,306 @@ class _WebViewScreenState extends State<WebViewScreen> {
         statusBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        body:InAppWebView(
-            initialUrlRequest: URLRequest(
-              url: WebUri('https://sportmeid.mmcgbl.dev/auth/login'),
-            ),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              //mediaPlaybackRequiresUserGesture: false,
-              allowsInlineMediaPlayback: true,
-              useOnDownloadStart: true,
-             // useShouldOverrideUrlLoading: true,
-              allowFileAccess: true,
-              allowContentAccess: true,
-              allowUniversalAccessFromFileURLs: true,
-              allowFileAccessFromFileURLs: true,
-              supportMultipleWindows: true,
-              cacheEnabled: false, // <--- This disables caching
-              cacheMode: CacheMode.LOAD_DEFAULT,
-              clearSessionCache: false,
-            ),
+        body: Stack(
+          children: [
+            // WebView - loads in background
+            InAppWebView(
+              initialUrlRequest: URLRequest(
+                url: WebUri('https://sportmeid.mmcgbl.dev/auth/login'),
+              ),
+              initialSettings: InAppWebViewSettings(
+                javaScriptEnabled: true,
+                allowsInlineMediaPlayback: true,
+                useOnDownloadStart: true,
+                allowFileAccess: true,
+                allowContentAccess: true,
+                allowUniversalAccessFromFileURLs: true,
+                allowFileAccessFromFileURLs: true,
+                supportMultipleWindows: true,
+                cacheEnabled: false, // <--- This disables caching
+                cacheMode: CacheMode.LOAD_DEFAULT,
+                clearSessionCache: false,
+                transparentBackground: false,
+              ),
+              onLoadStart: (controller, url) {
+                setState(() {
+                  isLoading = true;
+                  errorMessage = null;
+                });
+              },
+              onLoadStop: (controller, url) async {
+                // WebView finished loading
+                setState(() {
+                  isLoading = false;
+                });
 
-            onWebViewCreated: (controller) {
-              webViewController = controller;
-
-              // Add JavaScript handlers for share functionality
-              controller.addJavaScriptHandler(
-                handlerName: 'shareHandler',
-                callback: (args) async {
-                  if (args.isNotEmpty) {
-                    String url = args[0].toString();
-                    String filename = args.length > 1
-                        ? args[1].toString()
-                        : 'qr_code.png';
-                    await _shareFile(url, filename);
-                  }
-                },
-              );
-
-              // Add download handler for blob URLs
-              controller.addJavaScriptHandler(
-                handlerName: 'downloadHandler',
-                callback: (args) async {
-                  if (args.isNotEmpty) {
-                    String base64Data = args[0].toString();
-                    String filename = args.length > 1
-                        ? args[1].toString()
-                        : 'qr_code.png';
-
-                    try {
-                      Uint8List bytes = base64Decode(base64Data);
-                      await _saveFile(bytes, filename);
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Download error: $e')),
-                      );
+                // Inject JavaScript to intercept download buttons and handle share API
+                await controller.evaluateJavascript(
+                  source: '''
+                    if (!navigator.share) {
+                      navigator.share = function(data) {
+                        return new Promise((resolve, reject) => {
+                          if (data.url) {
+                            window.flutter_inappwebview.callHandler('shareHandler', data.url, 'qr_code.png');
+                            resolve();
+                          } else {
+                            reject(new Error('No shareable content'));
+                          }
+                        });
+                      };
                     }
-                  }
-                },
-              );
-            },
-            onLoadStop: (controller, url) async {
-              // Inject JavaScript to intercept download buttons and handle share API
-              await controller.evaluateJavascript(
-                source: '''
-                if (!navigator.share) {
-                  navigator.share = function(data) {
-                    return new Promise((resolve, reject) => {
-                      if (data.url) {
-                        window.flutter_inappwebview.callHandler('shareHandler', data.url, 'qr_code.png');
-                        resolve();
-                      } else {
-                        reject(new Error('No shareable content'));
-                      }
-                    });
-                  };
-                }
 
-                // Store mapping from blob URL to base64 data
-                window.blobToBase64Map = new Map();
-                
-                // Patch URL.createObjectURL to capture blob data immediately
-                const originalCreateObjectURL = URL.createObjectURL;
-                URL.createObjectURL = function(blob) {
-                  const blobUrl = originalCreateObjectURL.call(this, blob);
-                  console.log('Blob URL created:', blobUrl);
-                  
-                  // Store the blob data for this URL
-                  if (blob instanceof Blob) {
-                    const reader = new FileReader();
-                    reader.onload = function() {
-                      const base64 = reader.result.split(',')[1];
-                      window.blobToBase64Map.set(blobUrl, base64);
-                      console.log('Blob data mapped for:', blobUrl);
+                    // Store mapping from blob URL to base64 data
+                    window.blobToBase64Map = new Map();
+                    
+                    // Patch URL.createObjectURL to capture blob data immediately
+                    const originalCreateObjectURL = URL.createObjectURL;
+                    URL.createObjectURL = function(blob) {
+                      const blobUrl = originalCreateObjectURL.call(this, blob);
+                      console.log('Blob URL created:', blobUrl);
+                      
+                      // Store the blob data for this URL
+                      if (blob instanceof Blob) {
+                        const reader = new FileReader();
+                        reader.onload = function() {
+                          const base64 = reader.result.split(',')[1];
+                          window.blobToBase64Map.set(blobUrl, base64);
+                          console.log('Blob data mapped for:', blobUrl);
+                        };
+                        reader.readAsDataURL(blob);
+                      }
+                      
+                      return blobUrl;
                     };
-                    reader.readAsDataURL(blob);
-                  }
-                  
-                  return blobUrl;
-                };
 
-                // Intercept ALL clicks on the page
-                document.addEventListener('click', function(event) {
-                  const target = event.target;
-                  
-                  // Check if this is a download-related element
-                  const isDownloadButton = target.tagName === 'A' && target.hasAttribute('download') ||
-                                         target.tagName === 'BUTTON' && (target.textContent || '').toLowerCase().includes('download') ||
-                                         (target.className || '').toLowerCase().includes('download');
-                  
-                  if (isDownloadButton) {
-                    console.log('Download button clicked:', target.tagName, target.textContent);
-                    
-                    // Look for blob URLs on the page
-                    const blobLinks = document.querySelectorAll('a[href^="blob:"]');
-                    
-                    for (const link of blobLinks) {
-                      const blobUrl = link.href;
-                      if (window.blobToBase64Map.has(blobUrl)) {
-                        console.log('Found mapped blob data for:', blobUrl);
-                        event.preventDefault();
-                        event.stopPropagation();
+                    // Intercept ALL clicks on the page
+                    document.addEventListener('click', function(event) {
+                      const target = event.target;
+                      
+                      // Check if this is a download-related element
+                      const isDownloadButton = target.tagName === 'A' && target.hasAttribute('download') ||
+                                             target.tagName === 'BUTTON' && (target.textContent || '').toLowerCase().includes('download') ||
+                                             (target.className || '').toLowerCase().includes('download');
+                      
+                      if (isDownloadButton) {
+                        console.log('Download button clicked:', target.tagName, target.textContent);
                         
-                        const base64Data = window.blobToBase64Map.get(blobUrl);
-                        const filename = link.download || 'qr_code.png';
+                        // Look for blob URLs on the page
+                        const blobLinks = document.querySelectorAll('a[href^="blob:"]');
                         
-                        // Call Flutter with the stored base64 data
-                        window.flutter_inappwebview.callHandler('downloadHandler', base64Data, filename);
-                        return false;
+                        for (const link of blobLinks) {
+                          const blobUrl = link.href;
+                          if (window.blobToBase64Map.has(blobUrl)) {
+                            console.log('Found mapped blob data for:', blobUrl);
+                            event.preventDefault();
+                            event.stopPropagation();
+                            
+                            const base64Data = window.blobToBase64Map.get(blobUrl);
+                            const filename = link.download || 'qr_code.png';
+                            
+                            // Call Flutter with the stored base64 data
+                            window.flutter_inappwebview.callHandler('downloadHandler', base64Data, filename);
+                            return false;
+                          }
+                        }
+                        
+                        // If no blob found, try canvas extraction
+                        const canvases = document.querySelectorAll('canvas');
+                        if (canvases.length > 0) {
+                          try {
+                            console.log('Trying canvas extraction');
+                            event.preventDefault();
+                            event.stopPropagation();
+                            
+                            const canvas = canvases[canvases.length - 1];
+                            const dataUrl = canvas.toDataURL('image/png');
+                            const base64 = dataUrl.split(',')[1];
+                            
+                            window.flutter_inappwebview.callHandler('downloadHandler', base64, 'qr_code.png');
+                            return false;
+                          } catch (e) {
+                            console.log('Canvas extraction failed:', e);
+                          }
+                        }
+                        
+                        console.log('No blob data or canvas found, allowing default behavior');
                       }
-                    }
+                    }, true); // Use capture phase to intercept early
                     
-                    // If no blob found, try canvas extraction
-                    const canvases = document.querySelectorAll('canvas');
-                    if (canvases.length > 0) {
+                    console.log('Enhanced download interception ready with URL mapping');
+                  ''',
+                );
+              },
+              onLoadError: (controller, url, code, message) {
+                setState(() {
+                  isLoading = false;
+                  errorMessage = 'Failed to load page: $message';
+                });
+              },
+              onLoadHttpError: (controller, url, statusCode, description) {
+                setState(() {
+                  isLoading = false;
+                  errorMessage = 'HTTP Error $statusCode: $description';
+                });
+              },
+              onWebViewCreated: (controller) {
+                webViewController = controller;
+
+                // Add JavaScript handlers for share functionality
+                controller.addJavaScriptHandler(
+                  handlerName: 'shareHandler',
+                  callback: (args) async {
+                    if (args.isNotEmpty) {
+                      String url = args[0].toString();
+                      String filename = args.length > 1
+                          ? args[1].toString()
+                          : 'qr_code.png';
+                      await _shareFile(url, filename);
+                    }
+                  },
+                );
+
+                // Add download handler for blob URLs
+                controller.addJavaScriptHandler(
+                  handlerName: 'downloadHandler',
+                  callback: (args) async {
+                    if (args.isNotEmpty) {
+                      String base64Data = args[0].toString();
+                      String filename = args.length > 1
+                          ? args[1].toString()
+                          : 'qr_code.png';
+
                       try {
-                        console.log('Trying canvas extraction');
-                        event.preventDefault();
-                        event.stopPropagation();
-                        
-                        const canvas = canvases[canvases.length - 1];
-                        const dataUrl = canvas.toDataURL('image/png');
-                        const base64 = dataUrl.split(',')[1];
-                        
-                        window.flutter_inappwebview.callHandler('downloadHandler', base64, 'qr_code.png');
-                        return false;
+                        Uint8List bytes = base64Decode(base64Data);
+                        await _saveFile(bytes, filename);
                       } catch (e) {
-                        console.log('Canvas extraction failed:', e);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Download error: $e')),
+                          );
+                        }
                       }
                     }
-                    
-                    console.log('No blob data or canvas found, allowing default behavior');
-                  }
-                }, true); // Use capture phase to intercept early
-                
-                console.log('Enhanced download interception ready with URL mapping');
-              ''',
-              );
-            },
-            // onConsoleMessage: (controller, consoleMessage) {
+                  },
+                );
+              },
+              onDownloadStartRequest: (controller, downloadStartRequest) async {
+                String url = downloadStartRequest.url.toString();
+                String filename =
+                    downloadStartRequest.suggestedFilename ?? 'qr_code.png';
 
-            // },
-            onDownloadStartRequest: (controller, downloadStartRequest) async {
-              String url = downloadStartRequest.url.toString();
-              String filename =
-                  downloadStartRequest.suggestedFilename ?? 'qr_code.png';
+                await _downloadFile(url, filename);
+              },
+              onCreateWindow: (controller, createWindowAction) async {
+                return true;
+              },
+            ),
 
-              await _downloadFile(url, filename);
-            },
-            onCreateWindow: (controller, createWindowAction) async {
-              return true;
-            },
-            // onLoadError: (controller, url, code, message) {
-            //   print('Load error: $code, $message');
-            // },
-            // onLoadHttpError: (controller, url, statusCode, description) {
-            //   print('HTTP error: $statusCode, $description');
-            // },
-          ),
-        
+            // Loading overlay - shows on top while WebView is loading
+            if (isLoading)
+              Container(
+                color: Colors.white,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // SportMeid logo or branding
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDDA027),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.sports,
+                          size: 60,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Loading text
+                      Text(
+                        'SportMeid',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFFDDA027),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      Text(
+                        'Loading your sports platform...',
+                        style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Loading indicator
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            const Color(0xFFDDA027),
+                          ),
+                          strokeWidth: 3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Error display
+            if (errorMessage != null)
+              Container(
+                color: Colors.white,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 64,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Connection Error',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            errorMessage = null;
+                            isLoading = true;
+                          });
+                          webViewController?.reload();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFDDA027),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
